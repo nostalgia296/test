@@ -1,0 +1,500 @@
+package handler
+
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"net/http"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/nostalgia296/ocs-ai/internal/answer"
+	"github.com/nostalgia296/ocs-ai/internal/config"
+	"github.com/nostalgia296/ocs-ai/internal/llm"
+	"github.com/nostalgia296/ocs-ai/internal/log"
+	"github.com/nostalgia296/ocs-ai/internal/model"
+)
+
+var iconKeywords = []string{"/icon/", "/icons/", "icon/", "video.png", "audio.png", "play.png", "pause.png"}
+var imgPattern = regexp.MustCompile(`(https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+?\.(?:jpg|jpeg|png|gif|bmp|webp))`)
+
+// AnswerRequest is the JSON request body for /api/answer.
+type AnswerRequest struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+	Type     int      `json:"type"`
+	Images   []string `json:"images"`
+}
+
+// AnswerResponse is the JSON response from /api/answer.
+type AnswerResponse struct {
+	Success       bool                   `json:"success"`
+	Question      string                 `json:"question"`
+	Answer        string                 `json:"answer"`
+	OCSAnswer     string                 `json:"ocs_answer"`
+	Type          string                 `json:"type"`
+	RawAnswer     string                 `json:"raw_answer"`
+	Model         string                 `json:"model"`
+	Provider      string                 `json:"provider"`
+	ReasoningUsed bool                   `json:"reasoning_used"`
+	AITime        float64                `json:"ai_time"`
+	TotalTime     float64                `json:"total_time"`
+	Usage         *UsageInfo             `json:"usage"`
+	OCSFormat     []interface{}          `json:"ocs_format"`
+}
+
+// UsageInfo holds token usage data.
+type UsageInfo struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// Service provides the core answering business logic.
+type Service struct {
+	modelManager *model.Manager
+	cfg          *config.Config
+	httpClient   *http.Client
+}
+
+func NewService(mm *model.Manager, cfg *config.Config) *Service {
+	return &Service{
+		modelManager: mm,
+		cfg:          cfg,
+		httpClient:   &http.Client{Timeout: time.Duration(cfg.Timeout * float64(time.Second))},
+	}
+}
+
+func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"success": false, "error": "method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	var req AnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "无效的请求数据"})
+		return
+	}
+
+	question := strings.TrimSpace(req.Question)
+	if question == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "题目不能为空"})
+		return
+	}
+
+	options := normalizeOptions(req.Options)
+	qType := config.QuestionTypeSingle
+	qTypeName := "单选题"
+	if key, ok := config.TypeNumToKey[req.Type]; ok {
+		qType = key
+		qTypeName = config.QuestionTypeNames[qType]
+	}
+
+	if qType == config.QuestionTypeCompletion {
+		options = []string{}
+	}
+
+	// Extract and filter images
+	imageItems, imageURLs := extractImages(question, options, req.Images)
+	imageItems = filterIconImages(imageItems)
+	imageURLs = make([]string, len(imageItems))
+	for i, item := range imageItems {
+		imageURLs[i] = item["url"]
+	}
+
+	useOptionLabels := (qType == config.QuestionTypeSingle || qType == config.QuestionTypeMultiple) &&
+		hasOptionImages(imageItems)
+
+	// Build prompt
+	prompt := buildPrompt(question, options, qType, useOptionLabels)
+
+	// Determine reasoning mode
+	forceReasoning := determineReasoning(s.cfg, qType, len(imageURLs) > 0)
+
+	// Check available models
+	typeModels := s.modelManager.GetAvailableModels(qType, len(imageURLs) > 0)
+	if len(typeModels) == 0 {
+		errorMsg := qTypeName + "未配置可用模型，请到模型管理页设置题型映射"
+		if len(imageURLs) > 0 {
+			errorMsg = "图片题未配置可用的多模态模型，请到模型管理页为图片题配置模型"
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": errorMsg})
+		return
+	}
+
+	// Call models with failover
+	startTime := time.Now()
+	var reasoning, rawAnswer string
+	var usage *llm.UsageInfo
+	var actualModelID, modelName, actualProvider string
+	var reasoningUsed bool
+
+	for _, tryModelID := range typeModels {
+		m := s.modelManager.GetModel(tryModelID)
+		if m == nil {
+			continue
+		}
+
+		llmModel := llm.ModelConfigForCall{
+			ID:                tryModelID,
+			Name:              m.Name,
+			Provider:          m.Provider,
+			APIKey:            m.APIKey,
+			BaseURL:           m.BaseURL,
+			ModelName:         m.ModelName,
+			IsMultimodal:      m.IsMultimodal,
+			MaxTokens:         m.MaxTokens,
+			Temperature:       m.Temperature,
+			TopP:              m.TopP,
+			SupportsReasoning: m.SupportsReasoning,
+			ReasoningParamName:  m.ReasoningParamName,
+			ReasoningParamValue: m.ReasoningParamValue,
+			APIProtocol:       m.APIProtocol,
+		}
+
+		result, err := llm.CallModel(r.Context(), s.httpClient, llmModel, prompt, imageURLs, imageItems, forceReasoning)
+		if err != nil {
+			continue
+		}
+
+		actualModelID = tryModelID
+		modelName = m.Name
+		actualProvider = llm.InferProvider(m.ModelName, m.BaseURL, m.Provider)
+		reasoning = result.Reasoning
+		rawAnswer = result.Answer
+		usage = result.Usage
+		reasoningUsed = result.ReasoningUsed
+		break
+	}
+
+	aiTime := time.Since(startTime).Seconds()
+	totalTime := aiTime
+
+	if rawAnswer == "" {
+		errorMsg := "可用模型均调用失败，请检查模型配置或网络连接"
+		if len(imageURLs) > 0 {
+			errorMsg = "图片题未配置可用的多模态模型，请到模型管理页为图片题配置模型"
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": errorMsg})
+		return
+	}
+
+	// Process answer
+	processedAnswer := answer.ProcessAnswer(rawAnswer, qType, options, useOptionLabels)
+	ocsAnswer := answer.ResolveAnswerForOcs(processedAnswer, rawAnswer, qType, options, useOptionLabels)
+
+	// Token totals
+	promptTokens := 0
+	completionTokens := 0
+	if usage != nil {
+		promptTokens = usage.PromptTokens
+		completionTokens = usage.CompletionTokens
+	}
+	totalTokens := promptTokens + completionTokens
+
+	// Log to CSV
+	log.AppendRecord(s.cfg.CSVLogFile, log.AnswerRecord{
+		QuestionType:     qTypeName,
+		Question:         question,
+		Options:          strings.Join(options, " | "),
+		RawAnswer:        rawAnswer,
+		Reasoning:        reasoning,
+		ProcessedAnswer:  processedAnswer,
+		AITime:           aiTime,
+		TotalTime:        totalTime,
+		ModelName:        modelName,
+		ReasoningUsed:    reasoningUsed,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      totalTokens,
+		Provider:         actualProvider,
+	})
+
+	// Build OCS tags
+	tags := buildTags(reasoningUsed, forceReasoning, actualModelID, modelName, s.modelManager)
+
+	ocsFormat := []interface{}{
+		question,
+		ocsAnswer,
+		map[string]interface{}{
+			"ai":             true,
+			"tags":           tags,
+			"model":          modelName,
+			"provider":       actualProvider,
+			"reasoning_used": reasoningUsed,
+			"ai_time":        roundFloat(aiTime, 2),
+			"total_time":     roundFloat(totalTime, 2),
+			"usage": map[string]int{
+				"prompt_tokens":     promptTokens,
+				"completion_tokens": completionTokens,
+				"total_tokens":      totalTokens,
+			},
+		},
+	}
+
+	resp := AnswerResponse{
+		Success:       true,
+		Question:      question,
+		Answer:        processedAnswer,
+		OCSAnswer:     ocsAnswer,
+		Type:          qType,
+		RawAnswer:     rawAnswer,
+		Model:         modelName,
+		Provider:      actualProvider,
+		ReasoningUsed: reasoningUsed,
+		AITime:        roundFloat(aiTime, 2),
+		TotalTime:     roundFloat(totalTime, 2),
+		Usage: &UsageInfo{
+			PromptTokens:     promptTokens,
+			CompletionTokens: completionTokens,
+			TotalTokens:      totalTokens,
+		},
+		OCSFormat: ocsFormat,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func normalizeOptions(options []string) []string {
+	if len(options) == 0 {
+		return []string{}
+	}
+	result := make([]string, 0, len(options))
+	for _, opt := range options {
+		opt = strings.TrimSpace(opt)
+		if opt != "" {
+			result = append(result, opt)
+		}
+	}
+	return result
+}
+
+func hasOptionImages(imageItems []map[string]string) bool {
+	for _, item := range imageItems {
+		if item["source"] == "option" {
+			return true
+		}
+	}
+	return false
+}
+
+func extractImages(question string, options []string, apiImages []string) ([]map[string]string, []string) {
+	var imageItems []map[string]string
+	seenURLs := map[string]bool{}
+
+	addImage := func(url, label, source string) {
+		url = cleanURL(url)
+		if url == "" || seenURLs[url] {
+			return
+		}
+		seenURLs[url] = true
+		imageItems = append(imageItems, map[string]string{"url": url, "label": label, "source": source})
+	}
+
+	foundImages := imgPattern.FindAllString(question, -1)
+	for i, imgURL := range foundImages {
+		addImage(imgURL, formatImageLabel("Question Image", i+1), "question")
+	}
+
+	if len(options) > 0 {
+		for i, opt := range options {
+			optImages := imgPattern.FindAllString(opt, -1)
+			for j, imgURL := range optImages {
+				label := string(rune('A' + i))
+				addImage(imgURL, formatImageLabel("Option", j+1, label), "option")
+			}
+		}
+	}
+
+	for i, img := range apiImages {
+		if img == "" {
+			continue
+		}
+		imgURL := cleanURL(img)
+		if seenURLs[imgURL] {
+			continue
+		}
+		imageItems = append(imageItems, map[string]string{"url": imgURL, "label": formatImageLabel("API Image", i+1), "source": "api"})
+	}
+
+	imageURLs := make([]string, len(imageItems))
+	for i, item := range imageItems {
+		imageURLs[i] = item["url"]
+	}
+
+	return imageItems, imageURLs
+}
+
+func formatImageLabel(prefix string, index int, extra ...string) string {
+	label := fmt.Sprintf("%s %d", prefix, index)
+	if len(extra) > 0 {
+		label = fmt.Sprintf("%s %s_%d", prefix, extra[0], index)
+	}
+	return label
+}
+
+func cleanURL(url string) string {
+	url = strings.TrimSpace(url)
+	match := regexp.MustCompile(`(?i)\.(jpg|jpeg|png|gif|bmp|webp)`).FindStringIndex(url)
+	if len(match) > 0 {
+		return url[:match[1]]
+	}
+	return url
+}
+
+func filterIconImages(items []map[string]string) []map[string]string {
+	result := []map[string]string{}
+	for _, item := range items {
+		urlLower := strings.ToLower(item["url"])
+		skip := false
+		for _, kw := range iconKeywords {
+			if strings.Contains(urlLower, kw) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func buildPrompt(question string, options []string, qType string, useOptionLabels bool) string {
+	switch qType {
+	case config.QuestionTypeSingle:
+		return buildSingleChoicePrompt(question, options, useOptionLabels)
+	case config.QuestionTypeMultiple:
+		return buildMultipleChoicePrompt(question, options, useOptionLabels)
+	case config.QuestionTypeJudgement:
+		return buildJudgementPrompt(question, options)
+	case config.QuestionTypeCompletion:
+		return buildCompletionPrompt(question)
+	default:
+		return buildDefaultPrompt(question, options)
+	}
+}
+
+func buildSingleChoicePrompt(question string, options []string, useOptionLabels bool) string {
+	optionsText := formatOptions(options)
+	answerFormat := `4. 回答格式：直接输出选项字母，例如 A、B、C、D
+5. 如果选项是图片，必须根据图片标签选择对应字母，不要输出图片里的数值、公式或文字
+6. 只输出一个字母，不要有任何解释、分析或额外文字`
+	example := `如果正确答案是 A 选项，则只输出：A`
+	if !useOptionLabels {
+		answerFormat = `4. 回答格式：直接输出选项内容，不要包含A、B、C等标识符
+5. 只输出答案内容，不要有任何解释、分析或额外文字`
+		example = `如果正确答案是选项"北京"，则只输出：北京`
+	}
+
+	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】单选题（只能选择一个正确答案）\n\n【题目】\n" + question + "\n\n【选项】\n" + optionsText + "\n\n【回答要求】\n1. 仔细分析题目和所有选项\n2. 只选择一个最正确的答案\n3. 必须从给定的选项中选择，不能自己编造\n" + answerFormat + "\n\n【示例】\n" + example + "\n\n现在请回答上述题目："
+}
+
+func buildMultipleChoicePrompt(question string, options []string, useOptionLabels bool) string {
+	optionsText := formatOptions(options)
+	answerFormat := `5. 回答格式：A#B#C（只包含选项字母，多个答案之间用井号#分隔）
+6. 如果选项是图片，必须根据图片标签选择对应字母，不要输出图片里的数值、公式或文字
+7. 只输出选项字母，不要有任何解释、分析或额外文字`
+	example := `如果正确答案是 A 和 C 两个选项，则输出：A#C`
+	if !useOptionLabels {
+		answerFormat = `5. 回答格式：选项1#选项2#选项3（不要包含A、B、C等标识符）
+6. 只输出答案内容，不要有任何解释、分析或额外文字`
+		example = `如果正确答案是"北京"和"上海"两个选项，则输出：北京#上海`
+	}
+
+	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】多选题（可能有多个正确答案）\n\n【题目】\n" + question + "\n\n【选项】\n" + optionsText + "\n\n【回答要求】\n1. 仔细分析题目，找出所有正确的选项\n2. 多选题通常有2个或以上的正确答案\n3. 必须从给定的选项中选择，不能自己编造\n4. 多个答案之间用井号#分隔\n" + answerFormat + "\n\n【示例】\n" + example + "\n\n现在请回答上述题目："
+}
+
+func buildJudgementPrompt(question string, options []string) string {
+	optionsText := "无固定选项"
+	if len(options) > 0 {
+		optionsText = strings.Join(options, "\n")
+	}
+
+	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】判断题（判断对错/是否）\n\n【题目】\n" + question + "\n\n【可选答案】\n" + optionsText + "\n\n【回答要求】\n1. 仔细分析题目陈述是否正确\n2. 必须从给定的选项中选择（如：正确/错误、对/错、是/否、√/×等）\n3. 只输出一个判断结果\n4. 不要有任何解释、分析或额外文字\n\n【示例】\n如果题目陈述正确，且选项中有'正确'，则输出：正确\n\n现在请判断上述题目："
+}
+
+func buildCompletionPrompt(question string) string {
+	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】填空题\n\n【题目】\n" + question + "\n\n【回答要求】\n1. 仔细理解题目要求\n2. 给出准确、简洁的答案\n3. 如果有多个空，答案之间用井号#分隔\n4. 答案要具体、准确，避免模糊表述\n5. 只输出答案内容，不要有序号、解释或额外文字\n\n【示例】\n- 单空题：如果答案是'北京'，则输出：北京\n- 多空题：如果答案是'氢'和'氧'，则输出：氢#氧\n\n现在请回答上述填空题："
+}
+
+func buildDefaultPrompt(question string, options []string) string {
+	optionsText := "无固定选项"
+	if len(options) > 0 {
+		var parts []string
+		for _, opt := range options {
+			parts = append(parts, "- "+opt)
+		}
+		optionsText = strings.Join(parts, "\n")
+	}
+
+	return "请回答以下问题：\n\n【题目】\n" + question + "\n\n【选项】\n" + optionsText + "\n\n【要求】\n1. 给出准确的答案\n2. 如果有多个答案，用#分隔\n3. 只输出答案，不要解释\n\n请回答："
+}
+
+func formatOptions(options []string) string {
+	parts := make([]string, len(options))
+	for i, opt := range options {
+		parts[i] = string(rune('A'+i)) + ". " + opt
+	}
+	return strings.Join(parts, "\n")
+}
+
+func determineReasoning(cfg *config.Config, qType string, hasImages bool) bool {
+	if qType == config.QuestionTypeMultiple && cfg.AutoReasoningForMultiple {
+		return true
+	}
+	if hasImages && cfg.AutoReasoningForImages {
+		return true
+	}
+	return cfg.EnableReasoning
+}
+
+func buildTags(reasoningUsed, forceReasoning bool, modelID string, modelName string, mm *model.Manager) []map[string]string {
+	tags := []map[string]string{}
+
+	if reasoningUsed {
+		tags = append(tags, map[string]string{
+			"text":   "深度思考",
+			"title":  "使用深度思考模式生成，答案更准确",
+			"color":  "purple",
+		})
+		if forceReasoning {
+			tags = append(tags, map[string]string{
+				"text":   "自动思考",
+				"title":  "多选题自动启用深度思考",
+				"color":  "orange",
+			})
+		}
+	}
+
+	if modelID != "" {
+		m := mm.GetModel(modelID)
+		if m != nil {
+			tagText := "内置预设"
+			if !m.IsBuiltin {
+				tagText = "自定义模型"
+			}
+			tags = append(tags, map[string]string{
+				"text":   tagText,
+				"title":  "使用模型: " + modelName,
+				"color":  "green",
+			})
+		}
+	}
+
+	return tags
+}
+
+func roundFloat(v float64, decimals int) float64 {
+	factor := math.Pow10(decimals)
+	return math.Round(v*factor) / factor
+}
