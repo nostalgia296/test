@@ -14,10 +14,16 @@ import (
 	"github.com/nostalgia296/ocs-ai/internal/llm"
 	"github.com/nostalgia296/ocs-ai/internal/log"
 	"github.com/nostalgia296/ocs-ai/internal/model"
+	"github.com/nostalgia296/ocs-ai/internal/prompt"
 )
 
-var iconKeywords = []string{"/icon/", "/icons/", "icon/", "video.png", "audio.png", "play.png", "pause.png"}
-var imgPattern = regexp.MustCompile(`(https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+?\.(?:jpg|jpeg|png|gif|bmp|webp))`)
+var (
+	iconKeywords = map[string]bool{
+		"/icon/": true, "/icons/": true, "icon/": true,
+		"video.png": true, "audio.png": true, "play.png": true, "pause.png": true,
+	}
+	imgPattern = regexp.MustCompile(`(https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+?\.(?:jpg|jpeg|png|gif|bmp|webp))`)
+)
 
 // AnswerRequest is the JSON request body for /api/answer.
 type AnswerRequest struct {
@@ -112,7 +118,7 @@ func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
 		hasOptionImages(imageItems)
 
 	// Build prompt
-	prompt := buildPrompt(question, options, qType, useOptionLabels)
+	promptText := prompt.Build(question, options, qType, useOptionLabels)
 
 	// Determine reasoning mode
 	forceReasoning := determineReasoning(s.cfg, qType, len(imageURLs) > 0)
@@ -159,7 +165,7 @@ func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
 			APIProtocol:       m.APIProtocol,
 		}
 
-		result, err := llm.CallModel(r.Context(), s.httpClient, llmModel, prompt, imageURLs, imageItems, forceReasoning)
+		result, err := llm.CallModel(r.Context(), s.httpClient, llmModel, promptText, imageURLs, imageItems, forceReasoning)
 		if err != nil {
 			continue
 		}
@@ -344,9 +350,18 @@ func formatImageLabel(prefix string, index int, extra ...string) string {
 
 func cleanURL(url string) string {
 	url = strings.TrimSpace(url)
-	match := regexp.MustCompile(`(?i)\.(jpg|jpeg|png|gif|bmp|webp)`).FindStringIndex(url)
-	if len(match) > 0 {
-		return url[:match[1]]
+	// Find the extension and strip only the fragment (everything after #)
+	extMatch := regexp.MustCompile(`(?i)\.(jpg|jpeg|png|gif|bmp|webp)`).FindStringIndex(url)
+	if len(extMatch) > 0 {
+		// keep everything up to and including the extension, but strip fragment
+		raw := url[:extMatch[1]]
+		if idx := strings.Index(raw, "#"); idx != -1 {
+			return raw[:idx]
+		}
+		return raw
+	}
+	if idx := strings.Index(url, "#"); idx != -1 {
+		return url[:idx]
 	}
 	return url
 }
@@ -355,97 +370,18 @@ func filterIconImages(items []map[string]string) []map[string]string {
 	result := []map[string]string{}
 	for _, item := range items {
 		urlLower := strings.ToLower(item["url"])
-		skip := false
-		for _, kw := range iconKeywords {
+		matched := false
+		for kw := range iconKeywords {
 			if strings.Contains(urlLower, kw) {
-				skip = true
+				matched = true
 				break
 			}
 		}
-		if !skip {
+		if !matched {
 			result = append(result, item)
 		}
 	}
 	return result
-}
-
-func buildPrompt(question string, options []string, qType string, useOptionLabels bool) string {
-	switch qType {
-	case config.QuestionTypeSingle:
-		return buildSingleChoicePrompt(question, options, useOptionLabels)
-	case config.QuestionTypeMultiple:
-		return buildMultipleChoicePrompt(question, options, useOptionLabels)
-	case config.QuestionTypeJudgement:
-		return buildJudgementPrompt(question, options)
-	case config.QuestionTypeCompletion:
-		return buildCompletionPrompt(question)
-	default:
-		return buildDefaultPrompt(question, options)
-	}
-}
-
-func buildSingleChoicePrompt(question string, options []string, useOptionLabels bool) string {
-	optionsText := formatOptions(options)
-	answerFormat := `4. 回答格式：直接输出选项字母，例如 A、B、C、D
-5. 如果选项是图片，必须根据图片标签选择对应字母，不要输出图片里的数值、公式或文字
-6. 只输出一个字母，不要有任何解释、分析或额外文字`
-	example := `如果正确答案是 A 选项，则只输出：A`
-	if !useOptionLabels {
-		answerFormat = `4. 回答格式：直接输出选项内容，不要包含A、B、C等标识符
-5. 只输出答案内容，不要有任何解释、分析或额外文字`
-		example = `如果正确答案是选项"北京"，则只输出：北京`
-	}
-
-	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】单选题（只能选择一个正确答案）\n\n【题目】\n" + question + "\n\n【选项】\n" + optionsText + "\n\n【回答要求】\n1. 仔细分析题目和所有选项\n2. 只选择一个最正确的答案\n3. 必须从给定的选项中选择，不能自己编造\n" + answerFormat + "\n\n【示例】\n" + example + "\n\n现在请回答上述题目："
-}
-
-func buildMultipleChoicePrompt(question string, options []string, useOptionLabels bool) string {
-	optionsText := formatOptions(options)
-	answerFormat := `5. 回答格式：A#B#C（只包含选项字母，多个答案之间用井号#分隔）
-6. 如果选项是图片，必须根据图片标签选择对应字母，不要输出图片里的数值、公式或文字
-7. 只输出选项字母，不要有任何解释、分析或额外文字`
-	example := `如果正确答案是 A 和 C 两个选项，则输出：A#C`
-	if !useOptionLabels {
-		answerFormat = `5. 回答格式：选项1#选项2#选项3（不要包含A、B、C等标识符）
-6. 只输出答案内容，不要有任何解释、分析或额外文字`
-		example = `如果正确答案是"北京"和"上海"两个选项，则输出：北京#上海`
-	}
-
-	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】多选题（可能有多个正确答案）\n\n【题目】\n" + question + "\n\n【选项】\n" + optionsText + "\n\n【回答要求】\n1. 仔细分析题目，找出所有正确的选项\n2. 多选题通常有2个或以上的正确答案\n3. 必须从给定的选项中选择，不能自己编造\n4. 多个答案之间用井号#分隔\n" + answerFormat + "\n\n【示例】\n" + example + "\n\n现在请回答上述题目："
-}
-
-func buildJudgementPrompt(question string, options []string) string {
-	optionsText := "无固定选项"
-	if len(options) > 0 {
-		optionsText = strings.Join(options, "\n")
-	}
-
-	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】判断题（判断对错/是否）\n\n【题目】\n" + question + "\n\n【可选答案】\n" + optionsText + "\n\n【回答要求】\n1. 仔细分析题目陈述是否正确\n2. 必须从给定的选项中选择（如：正确/错误、对/错、是/否、√/×等）\n3. 只输出一个判断结果\n4. 不要有任何解释、分析或额外文字\n\n【示例】\n如果题目陈述正确，且选项中有'正确'，则输出：正确\n\n现在请判断上述题目："
-}
-
-func buildCompletionPrompt(question string) string {
-	return "你是一个专业的在线考试答题助手，请严格按照要求回答。\n\n【题目类型】填空题\n\n【题目】\n" + question + "\n\n【回答要求】\n1. 仔细理解题目要求\n2. 给出准确、简洁的答案\n3. 如果有多个空，答案之间用井号#分隔\n4. 答案要具体、准确，避免模糊表述\n5. 只输出答案内容，不要有序号、解释或额外文字\n\n【示例】\n- 单空题：如果答案是'北京'，则输出：北京\n- 多空题：如果答案是'氢'和'氧'，则输出：氢#氧\n\n现在请回答上述填空题："
-}
-
-func buildDefaultPrompt(question string, options []string) string {
-	optionsText := "无固定选项"
-	if len(options) > 0 {
-		var parts []string
-		for _, opt := range options {
-			parts = append(parts, "- "+opt)
-		}
-		optionsText = strings.Join(parts, "\n")
-	}
-
-	return "请回答以下问题：\n\n【题目】\n" + question + "\n\n【选项】\n" + optionsText + "\n\n【要求】\n1. 给出准确的答案\n2. 如果有多个答案，用#分隔\n3. 只输出答案，不要解释\n\n请回答："
-}
-
-func formatOptions(options []string) string {
-	parts := make([]string, len(options))
-	for i, opt := range options {
-		parts[i] = string(rune('A'+i)) + ". " + opt
-	}
-	return strings.Join(parts, "\n")
 }
 
 func determineReasoning(cfg *config.Config, qType string, hasImages bool) bool {

@@ -231,7 +231,9 @@ var TypeNumToName = map[int]string{
 	4: "判断题",
 }
 
-// TypeNumToKey maps OCS type numbers to question type keys
+// TypeNumToKey maps OCS type numbers to question type keys.
+// Note: QuestionTypeImage (image) does not have a dedicated OCS type number;
+// images are sent as part of questions with their original type numbers.
 var TypeNumToKey = map[int]string{
 	0: QuestionTypeSingle,
 	1: QuestionTypeMultiple,
@@ -239,7 +241,8 @@ var TypeNumToKey = map[int]string{
 	4: QuestionTypeJudgement,
 }
 
-// KeyToTypeNum maps question type keys back to OCS type numbers
+// KeyToTypeNum maps question type keys back to OCS type numbers.
+// Note: QuestionTypeImage has no corresponding OCS type number.
 var KeyToTypeNum = map[string]int{
 	QuestionTypeSingle:     0,
 	QuestionTypeMultiple:   1,

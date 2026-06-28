@@ -7,6 +7,12 @@ import (
 	"github.com/nostalgia296/ocs-ai/internal/config"
 )
 
+var (
+	cleanPrefixRe = regexp.MustCompile(`^(答案[是为：:]*|正确答案[是为：:]*|选择[：:]*)`)
+	optionPrefixRe = regexp.MustCompile(`^[A-Z][.、)]\s*`)
+	punctuationRe = regexp.MustCompile(`[。，、；：！？\s]`)
+)
+
 // CleanAnswer removes obvious formatting marks without modifying content.
 func CleanAnswer(text string) string {
 	if text == "" {
@@ -14,8 +20,7 @@ func CleanAnswer(text string) string {
 	}
 
 	// Remove common prefixes at start of line
-	re := regexp.MustCompile(`^(答案[是为：:]*|正确答案[是为：:]*|选择[：:]*)`)
-	text = re.ReplaceAllString(text, "")
+	text = cleanPrefixRe.ReplaceAllString(text, "")
 	text = strings.TrimSpace(text)
 
 	// Remove markdown formatting symbols
@@ -25,8 +30,7 @@ func CleanAnswer(text string) string {
 	text = strings.TrimSpace(text)
 
 	// Remove leading option identifiers (e.g. "A. ")
-	re2 := regexp.MustCompile(`^[A-Z][.、)]\s*`)
-	text = re2.ReplaceAllString(text, "")
+	text = optionPrefixRe.ReplaceAllString(text, "")
 	text = strings.TrimSpace(text)
 
 	return text
@@ -46,22 +50,20 @@ func MatchOption(answer, option string) bool {
 		return true
 	}
 
-	// Containment match
-	al := strings.ToLower(answer)
-	ol := strings.ToLower(option)
-	if strings.Contains(ol, al) || strings.Contains(al, ol) {
-		return true
-	}
-
 	// Remove punctuation and match
-	answerClean := regexp.MustCompile(`[。，、；：！？\s]`).ReplaceAllString(answer, "")
-	optionClean := regexp.MustCompile(`[。，、；：！？\s]`).ReplaceAllString(option, "")
+	answerClean := punctuationRe.ReplaceAllString(answer, "")
+	optionClean := punctuationRe.ReplaceAllString(option, "")
 	if strings.EqualFold(answerClean, optionClean) {
 		return true
 	}
 
 	return false
 }
+
+var (
+	charRangePatternCache = make(map[string]*regexp.Regexp)
+	compactPattern        = regexp.MustCompile(`[^A-Z]`)
+)
 
 // ExtractOptionIndexes extracts option indexes (0-based) from A/B/C style answers.
 func ExtractOptionIndexes(answer string, options []string) []int {
@@ -72,27 +74,30 @@ func ExtractOptionIndexes(answer string, options []string) []int {
 	maxLabel := string(rune('A' + min(len(options), 26) - 1))
 	upperAnswer := strings.ToUpper(answer)
 	charRange := "A-" + maxLabel
-	patterns := []string{
-		`选项\s*([` + charRange + `])`,
-		`OPTION\s*([` + charRange + `])`,
-		`(?<![A-Z0-9])([` + charRange + `])(?![A-Z0-9])`,
+
+	charRangeRe, ok := charRangePatternCache[charRange]
+	if !ok {
+		patterns := []string{
+			`选项\s*([` + charRange + `])`,
+			`OPTION\s*([` + charRange + `])`,
+			`(?<![A-Z0-9])([` + charRange + `])(?![A-Z0-9])`,
+		}
+		charRangeRe = regexp.MustCompile(strings.Join(patterns, "|"))
+		charRangePatternCache[charRange] = charRangeRe
 	}
 
 	indexes := []int{}
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		for _, match := range re.FindAllStringSubmatch(upperAnswer, -1) {
-			if len(match) > 1 {
-				idx := int(match[1][0] - 'A')
-				if 0 <= idx && idx < len(options) && !contains(indexes, idx) {
-					indexes = append(indexes, idx)
-				}
+	for _, match := range charRangeRe.FindAllStringSubmatch(upperAnswer, -1) {
+		if len(match) > 1 {
+			idx := int(match[1][0] - 'A')
+			if 0 <= idx && idx < len(options) && !contains(indexes, idx) {
+				indexes = append(indexes, idx)
 			}
 		}
 	}
 
 	// Compact: extract all A-Z letters
-	compact := regexp.MustCompile(`[^A-Z]`).ReplaceAllString(upperAnswer, "")
+	compact := compactPattern.ReplaceAllString(upperAnswer, "")
 	if len(indexes) == 0 && compact != "" {
 		allValid := true
 		for _, ch := range compact {

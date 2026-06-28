@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"time"
@@ -24,7 +25,9 @@ func NewManager(configFile string) *Manager {
 		Metadata:           map[string]string{"builtin_presets_bootstrap_version": "0"},
 		QuestionTypeModels: copyQuestionTypeConfigs(DefaultQuestionTypeModels),
 	}
-	m.Load()
+	if err := m.Load(); err != nil {
+		log.Printf("Warning: failed to load model config: %v", err)
+	}
 	return m
 }
 
@@ -383,10 +386,6 @@ func (m *Manager) normalizeState() bool {
 
 	normalizedModels := make(map[string]ModelConfig, len(m.Models))
 	for id, cfg := range m.Models {
-		cfg.IsBuiltin = cfg.IsBuiltin || false
-		if cfg.IsMultimodal == false && cfg.ModelName == "" {
-			cfg.IsMultimodal = false
-		}
 		if cfg.MaxTokens == 0 {
 			cfg.MaxTokens = 2000
 		}
@@ -405,7 +404,6 @@ func (m *Manager) normalizeState() bool {
 		if cfg.APIProtocol == "" {
 			cfg.APIProtocol = config.ModelAPICompatOpenAI
 		}
-		cfg.Enabled = cfg.Enabled || false
 		normalizedModels[id] = cfg
 	}
 	if len(normalizedModels) != len(m.Models) {
@@ -462,9 +460,9 @@ func (m *Manager) sanitizeMappings() bool {
 			filtered = append(filtered, modelID)
 		}
 		if len(filtered) != len(cfg.Models) {
-		qtCfg := m.QuestionTypeModels[qt]
-		qtCfg.Models = filtered
-		m.QuestionTypeModels[qt] = qtCfg
+			qtCfg := m.QuestionTypeModels[qt]
+			qtCfg.Models = filtered
+			m.QuestionTypeModels[qt] = qtCfg
 			changed = true
 		}
 	}

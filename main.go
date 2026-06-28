@@ -50,10 +50,15 @@ func printBanner(cfg *config.Config, runtime model.RuntimeSummary) {
 		for _, t := range runtime.ReadyQuestionTypes {
 			readyTypes += config.QuestionTypeNames[t] + "、"
 		}
-		readyTypes = readyTypes[:len(readyTypes)-1]
+		readyTypes = readyTypes[:len(readyTypes)-3]
 	} else {
 		readyTypes = "无"
 	}
+	fmt.Printf("OCS AI 答题服务已启动\n")
+	fmt.Printf("监听地址: %s:%d\n", cfg.Host, cfg.Port)
+	fmt.Printf("可用题型: %s\n", readyTypes)
+	fmt.Printf("深度思考: %s\n", boolStr(cfg.EnableReasoning))
+	fmt.Printf("模型数量: %d (启用 %d)\n", runtime.ModelCount, runtime.EnabledModelCount)
 }
 
 func boolStr(b bool) string {

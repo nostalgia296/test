@@ -173,28 +173,27 @@ func ReadStats(filePath string) (*Stats, error) {
 }
 
 func ReadAllRecords(filePath string) ([]AnswerRecord, error) {
-	data, err := os.ReadFile(filePath)
+	f, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	defer f.Close()
 
-	lines := strings.Split(string(data), "\n")
-	var records []AnswerRecord
+	reader := csv.NewReader(f)
+	reader.FieldsPerRecord = -1 // allow variable number of fields
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || line == CSVHeaders {
-			continue
+	var result []AnswerRecord
+	for i, fields := range records {
+		if i == 0 {
+			continue // skip header
 		}
-
-		fields, err := parseCSVLine(line)
-		if err != nil {
-			continue
-		}
-
 		if len(fields) < 16 {
 			continue
 		}
@@ -212,55 +211,30 @@ func ReadAllRecords(filePath string) ([]AnswerRecord, error) {
 		cost := 0.0
 		fmt.Sscanf(fields[14], "%f", &cost)
 
-		records = append(records, AnswerRecord{
-			Timestamp:       fields[0],
-			QuestionType:    fields[1],
-			Question:        fields[2],
-			Options:         fields[3],
-			RawAnswer:       fields[4],
-			Reasoning:       fields[5],
-			ProcessedAnswer: fields[6],
-			AITime:          aiTime,
-			TotalTime:       totalTime,
-			ModelName:       fields[9],
-			ReasoningUsed:   strToBool(fields[10]),
-			PromptTokens:    promptTokens,
+		result = append(result, AnswerRecord{
+			Timestamp:        fields[0],
+			QuestionType:     fields[1],
+			Question:         fields[2],
+			Options:          fields[3],
+			RawAnswer:        fields[4],
+			Reasoning:        fields[5],
+			ProcessedAnswer:  fields[6],
+			AITime:           aiTime,
+			TotalTime:        totalTime,
+			ModelName:        fields[9],
+			ReasoningUsed:    strToBool(fields[10]),
+			PromptTokens:     promptTokens,
 			CompletionTokens: completionTokens,
-			TotalTokens:     totalTokens,
-			Cost:            cost,
-			Provider:        fields[15],
+			TotalTokens:      totalTokens,
+			Cost:             cost,
+			Provider:         fields[15],
 		})
 	}
 
-	return records, nil
+	return result, nil
 }
 
-func parseCSVLine(line string) ([]string, error) {
-	var fields []string
-	var current strings.Builder
-	inQuotes := false
-
-	for i := 0; i < len(line); i++ {
-		ch := line[i]
-		if ch == '"' {
-			if inQuotes && i+1 < len(line) && line[i+1] == '"' {
-				current.WriteByte('"')
-				i++
-			} else {
-				inQuotes = !inQuotes
-			}
-		} else if ch == ',' && !inQuotes {
-			fields = append(fields, current.String())
-			current.Reset()
-		} else {
-			current.WriteByte(ch)
-		}
-	}
-	fields = append(fields, current.String())
-
-	return fields, nil
-}
-
+// ClearFile truncates the CSV file and rewrites the header.
 func ClearFile(filePath string) error {
 	return writeHeader(filePath)
 }

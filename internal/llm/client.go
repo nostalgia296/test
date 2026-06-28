@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -55,9 +56,9 @@ func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigFo
 	reasoningRequested := reasoningPayload != nil || legacyReasoning != nil
 	useResponsesAPI := ShouldUseResponsesAPI(model)
 
-	messages, _, _ := BuildMultimodalMessages(prompt, inferredProvider, multimodalURLs, imageItems, true, ctx, httpClient)
+	messages, _, _ := BuildMultimodalMessages(ctx, prompt, inferredProvider, multimodalURLs, imageItems, true, httpClient)
 
-	maxAttempts := 1
+	maxAttempts := 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		result, err := callModelOnce(ctx, httpClient, model, messages, reasoningPayload, legacyReasoning, useResponsesAPI)
@@ -160,7 +161,7 @@ func doOpenAIRequest(ctx context.Context, httpClient *http.Client, baseURL, path
 	}
 
 	url := strings.TrimRight(baseURL, "/") + path
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(jsonBody)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

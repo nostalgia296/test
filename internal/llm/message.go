@@ -30,7 +30,7 @@ type ReasoningParam struct {
 }
 
 // BuildMultimodalMessages builds multimodal message list and returns base64 images.
-func BuildMultimodalMessages(prompt, providerName string, imageURLs []string, imageItems []map[string]string, includeLabels bool, ctx context.Context, httpClient *http.Client) ([]Message, []Base64Image, bool) {
+func BuildMultimodalMessages(ctx context.Context, prompt, providerName string, imageURLs []string, imageItems []map[string]string, includeLabels bool, httpClient *http.Client) ([]Message, []Base64Image, bool) {
 	imageURLs = imageURLs[:]
 	imageItems = imageItems[:]
 	useImages := len(imageURLs) > 0
@@ -108,9 +108,9 @@ func buildMultimodalWithImages(prompt, systemContent string, base64Images []Base
 			if includeLabels {
 				userContent = append(userContent, map[string]string{"type": "text", "text": "[" + imageItem.Label + "]"})
 			}
-			userContent = append(userContent, map[string]map[string]string{
-				"type": {"type": "image_url"},
-				"image_url": {"url": imageItem.Data},
+			userContent = append(userContent, map[string]interface{}{
+				"type": "image_url",
+				"image_url": map[string]string{"url": imageItem.Data},
 			})
 			cursor = match[1]
 		}
@@ -133,9 +133,9 @@ func buildMultimodalWithImages(prompt, systemContent string, base64Images []Base
 		if includeLabels {
 			userContent = append(userContent, map[string]string{"type": "text", "text": "[" + img.Label + "]"})
 		}
-		userContent = append(userContent, map[string]map[string]string{
-			"type": {"type": "image_url"},
-			"image_url": {"url": img.Data},
+		userContent = append(userContent, map[string]interface{}{
+			"type": "image_url",
+			"image_url": map[string]string{"url": img.Data},
 		})
 	}
 	userContent = append(userContent, map[string]string{"type": "text", "text": prompt})
