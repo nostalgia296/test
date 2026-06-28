@@ -6,21 +6,10 @@ import (
 )
 
 const (
-	BuiltinPresetBootstrapVersion = 1
-
-	PresetDeepSeekV4Flash = "preset_deepseek_v4_flash"
-	PresetDeepSeekV4Pro   = "preset_deepseek_v4_pro"
-	PresetDoubao          = "preset_doubao"
-
-	BuiltinPresetIDs = PresetDeepSeekV4Flash + "|" + PresetDeepSeekV4Pro + "|" + PresetDoubao
+	// BootstrapVersion tracks the builtin presets bootstrap schema version.
+	// Set to 0 to disable builtin presets bootstrapping.
+	BuiltinPresetBootstrapVersion = 0
 )
-
-var LegacyPresetIDMap = map[string]string{
-	"system_deepseek":          PresetDeepSeekV4Flash,
-	"system_deepseek_chat":     PresetDeepSeekV4Flash,
-	"system_deepseek_reasoner": PresetDeepSeekV4Pro,
-	"system_doubao":            PresetDoubao,
-}
 
 type ModelConfig struct {
 	Name                string  `json:"name"`
@@ -84,109 +73,4 @@ func copyQuestionTypeConfigs(src map[string]QuestionTypeConfig) map[string]Quest
 		}
 	}
 	return dst
-}
-
-func BuildBuiltinPreset(presetID string, source map[string]ModelConfig, deepSeekKey, deepSeekURL, doubaoKey, doubaoURL string, cfg *config.Config) ModelConfig {
-	now := time.Now().Format(time.RFC3339)
-
-	switch presetID {
-	case PresetDeepSeekV4Flash:
-		apiKey := deepSeekKey
-		if source != nil {
-			if m, ok := source[PresetDeepSeekV4Flash]; ok {
-				apiKey = m.APIKey
-			}
-			if m, ok := source["system_deepseek_chat"]; ok && apiKey == deepSeekKey {
-				apiKey = m.APIKey
-			}
-			if m, ok := source["system_deepseek"]; ok && apiKey == deepSeekKey {
-				apiKey = m.APIKey
-			}
-		}
-		return ModelConfig{
-			Name:                "DeepSeek V4 Flash",
-			Provider:            "openai",
-			APIKey:              apiKey,
-			BaseURL:             deepSeekURL,
-			ModelName:           "deepseek-v4-flash",
-			IsMultimodal:        false,
-			MaxTokens:           cfg.MaxTokens,
-			Temperature:         cfg.Temperature,
-			TopP:                cfg.TopP,
-			SupportsReasoning:   true,
-			ReasoningParamName:  "reasoning_effort",
-			ReasoningParamValue: cfg.ReasoningEffort,
-			APIProtocol:         config.ModelAPICompatOpenAI,
-			Enabled:             apiKey != "",
-			IsBuiltin:           true,
-			CreatedAt:           now,
-			UpdatedAt:           now,
-		}
-	case PresetDeepSeekV4Pro:
-		apiKey := deepSeekKey
-		if source != nil {
-			if m, ok := source[PresetDeepSeekV4Pro]; ok {
-				apiKey = m.APIKey
-			}
-			if m, ok := source["system_deepseek_reasoner"]; ok && apiKey == deepSeekKey {
-				apiKey = m.APIKey
-			}
-			if m, ok := source["system_deepseek_chat"]; ok && apiKey == deepSeekKey {
-				apiKey = m.APIKey
-			}
-			if m, ok := source["system_deepseek"]; ok && apiKey == deepSeekKey {
-				apiKey = m.APIKey
-			}
-		}
-		return ModelConfig{
-			Name:                "DeepSeek V4 Pro",
-			Provider:            "openai",
-			APIKey:              apiKey,
-			BaseURL:             deepSeekURL,
-			ModelName:           "deepseek-v4-pro",
-			IsMultimodal:        false,
-			MaxTokens:           cfg.ReasoningMaxTokens,
-			Temperature:         cfg.Temperature,
-			TopP:                cfg.TopP,
-			SupportsReasoning:   true,
-			ReasoningParamName:  "reasoning_effort",
-			ReasoningParamValue: cfg.ReasoningEffort,
-			APIProtocol:         config.ModelAPICompatOpenAI,
-			Enabled:             apiKey != "",
-			IsBuiltin:           true,
-			CreatedAt:           now,
-			UpdatedAt:           now,
-		}
-	case PresetDoubao:
-		apiKey := doubaoKey
-		if source != nil {
-			if m, ok := source[PresetDoubao]; ok {
-				apiKey = m.APIKey
-			}
-			if m, ok := source["system_doubao"]; ok && apiKey == doubaoKey {
-				apiKey = m.APIKey
-			}
-		}
-		return ModelConfig{
-			Name:                "Doubao",
-			Provider:            "openai",
-			APIKey:              apiKey,
-			BaseURL:             doubaoURL,
-			ModelName:           "doubao-seed-1-6-251015",
-			IsMultimodal:        true,
-			MaxTokens:           cfg.MaxTokens,
-			Temperature:         cfg.Temperature,
-			TopP:                cfg.TopP,
-			SupportsReasoning:   true,
-			ReasoningParamName:  "reasoning_effort",
-			ReasoningParamValue: cfg.ReasoningEffort,
-			APIProtocol:         config.ModelAPICompatOpenAI,
-			Enabled:             apiKey != "",
-			IsBuiltin:           true,
-			CreatedAt:           now,
-			UpdatedAt:           now,
-		}
-	}
-
-	return ModelConfig{}
 }

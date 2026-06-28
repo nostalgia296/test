@@ -158,6 +158,7 @@ func buildURLPattern(base64Images []Base64Image) string {
 }
 
 // BuildResponsesInput converts messages to Responses API input format.
+// TODO: implement message conversion to Responses API input items
 func BuildResponsesInput(messages []Message) ([]ResponsesInputItem, []Base64Image, bool) {
 	return nil, nil, false
 }
@@ -244,6 +245,7 @@ func ExtractAnswerFromChatCompletions(resp ChatCompletionsResponse) string {
 }
 
 // BuildReasoningPayload builds the reasoning parameter payload.
+// TODO: implement reasoning payload based on model configuration
 func BuildReasoningPayload(model ModelConfigForCall, forceReasoning bool) (map[string]interface{}, *ReasoningParam) {
 	return nil, nil
 }
@@ -254,6 +256,7 @@ func InferProvider(modelName, baseURL, provider string) string {
 }
 
 // ShouldUseResponsesAPI determines if the Responses API should be used.
+// TODO: implement logic to select Responses API based on model/api_protocol config
 func ShouldUseResponsesAPI(model ModelConfigForCall) bool {
 	return false
 }

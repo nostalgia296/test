@@ -415,10 +415,7 @@ func buildTags(reasoningUsed, forceReasoning bool, modelID string, modelName str
 	if modelID != "" {
 		m := mm.GetModel(modelID)
 		if m != nil {
-			tagText := "内置预设"
-			if !m.IsBuiltin {
-				tagText = "自定义模型"
-			}
+			tagText := "自定义模型"
 			tags = append(tags, map[string]string{
 				"text":   tagText,
 				"title":  "使用模型: " + modelName,

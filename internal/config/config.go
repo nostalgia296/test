@@ -14,9 +14,6 @@ const (
 	QuestionTypeCompletion  = "completion"
 	QuestionTypeImage       = "image"
 
-	ProviderDeepSeek = "deepseek"
-	ProviderDoubao   = "doubao"
-
 	ModelAPICompatOpenAI = "openai_compat"
 	ModelAPIResponses    = "responses"
 	ModelAPIChat         = "chat_completions"
@@ -25,16 +22,6 @@ const (
 type Config struct {
 	// Model provider
 	ModelProvider string
-
-	// DeepSeek config
-	DeepSeekAPIKey    string
-	DeepSeekBaseURL   string
-	DeepSeekModel     string
-
-	// Doubao config
-	DoubaoAPIKey      string
-	DoubaoBaseURL     string
-	DoubaoModel       string
 
 	// Reasoning config
 	EnableReasoning           bool
@@ -71,10 +58,6 @@ type Config struct {
 
 var DefaultConfig = Config{
 	ModelProvider:           "auto",
-	DeepSeekBaseURL:         "https://api.deepseek.com",
-	DeepSeekModel:           "deepseek-chat",
-	DoubaoBaseURL:           "https://ark.cn-beijing.volces.com/api/v3",
-	DoubaoModel:             "doubao-seed-1-6-251015",
 	EnableReasoning:         false,
 	ReasoningEffort:         "medium",
 	AutoReasoningForMultiple: true,
@@ -130,14 +113,6 @@ func Load(envPaths ...string) (*Config, error) {
 	cfg := DefaultConfig
 
 	cfg.ModelProvider = getEnv("MODEL_PROVIDER", cfg.ModelProvider)
-
-	cfg.DeepSeekAPIKey = os.Getenv("DEEPSEEK_API_KEY")
-	cfg.DeepSeekBaseURL = getEnv("DEEPSEEK_BASE_URL", cfg.DeepSeekBaseURL)
-	cfg.DeepSeekModel = getEnv("DEEPSEEK_MODEL", cfg.DeepSeekModel)
-
-	cfg.DoubaoAPIKey = os.Getenv("DOUBAO_API_KEY")
-	cfg.DoubaoBaseURL = getEnv("DOUBAO_BASE_URL", cfg.DoubaoBaseURL)
-	cfg.DoubaoModel = getEnv("DOUBAO_MODEL", cfg.DoubaoModel)
 
 	cfg.EnableReasoning = getEnvBool("ENABLE_REASONING", cfg.EnableReasoning)
 	cfg.ReasoningEffort = getEnv("REASONING_EFFORT", cfg.ReasoningEffort)

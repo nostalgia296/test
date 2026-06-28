@@ -17,9 +17,6 @@ func main() {
 	}
 
 	modelManager := model.NewManager("custom_models.json")
-	if err := modelManager.BootstrapBuiltinPresets(cfg); err != nil {
-		log.Printf("Warning: builtin presets bootstrap failed: %v", err)
-	}
 
 	runtime := modelManager.GetRuntimeSummary()
 	printBanner(cfg, runtime)
