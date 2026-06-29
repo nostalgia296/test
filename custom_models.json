@@ -16,6 +16,23 @@
       "is_builtin": false,
       "created_at": "2026-06-29T00:00:00Z",
       "updated_at": "2026-06-29T00:00:00Z"
+    },
+    "claude-sonnet": {
+      "name": "Claude Sonnet 4",
+      "provider": "anthropic",
+      "api_key": "",
+      "base_url": "https://api.anthropic.com",
+      "model_name": "claude-sonnet-4-20250514",
+      "is_multimodal": true,
+      "max_tokens": 4096,
+      "temperature": 0.1,
+      "top_p": 0.95,
+      "api_protocol": "anthropic",
+      "ds_thinking_mode": false,
+      "enabled": false,
+      "is_builtin": false,
+      "created_at": "2026-06-29T00:00:00Z",
+      "updated_at": "2026-06-29T00:00:00Z"
     }
   },
   "metadata": {

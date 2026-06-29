@@ -14,7 +14,8 @@ const (
 	QuestionTypeCompletion  = "completion"
 	QuestionTypeImage       = "image"
 
-	ModelAPIChat = "chat_completions"
+	ModelAPIChat      = "chat_completions"
+	ModelAPIAnthropic = "anthropic"
 )
 
 type Config struct {

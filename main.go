@@ -7,6 +7,8 @@ import (
 
 	"github.com/nostalgia296/ocs-ai/internal/config"
 	"github.com/nostalgia296/ocs-ai/internal/handler"
+	_ "github.com/nostalgia296/ocs-ai/internal/llm/anthropic" // register anthropic provider
+	_ "github.com/nostalgia296/ocs-ai/internal/llm/chat"      // register chat_completions provider
 	"github.com/nostalgia296/ocs-ai/internal/model"
 )
 

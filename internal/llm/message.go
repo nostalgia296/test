@@ -24,7 +24,9 @@ type Message struct {
 }
 
 // BuildMultimodalMessages builds multimodal message list and returns base64 images.
-func BuildMultimodalMessages(ctx context.Context, prompt, providerName string, imageURLs []string, imageItems []map[string]string, includeLabels bool, httpClient *http.Client) ([]Message, []Base64Image, bool) {
+// apiProtocol controls the content block format: "anthropic" uses Anthropic-style image blocks,
+// all others use Chat Completions (OpenAI-compatible) style.
+func BuildMultimodalMessages(ctx context.Context, prompt, providerName string, apiProtocol string, imageURLs []string, imageItems []map[string]string, includeLabels bool, httpClient *http.Client) ([]Message, []Base64Image, bool) {
 	imageURLs = imageURLs[:]
 	imageItems = imageItems[:]
 	useImages := len(imageURLs) > 0
@@ -64,11 +66,31 @@ func BuildMultimodalMessages(ctx context.Context, prompt, providerName string, i
 		return []Message{{Role: "user", Content: prompt}}, nil, false
 	}
 
-	return buildMultimodalWithImages(prompt, "", base64Images, includeLabels)
+	return buildMultimodalWithImages(prompt, "", base64Images, includeLabels, apiProtocol)
 }
 
-func buildMultimodalWithImages(prompt, systemContent string, base64Images []Base64Image, includeLabels bool) ([]Message, []Base64Image, bool) {
+func buildMultimodalWithImages(prompt, systemContent string, base64Images []Base64Image, includeLabels bool, apiProtocol string) ([]Message, []Base64Image, bool) {
+	isAnthropic := apiProtocol == "anthropic"
 	userContent := []interface{}{}
+
+	// Helper to build an image content block appropriate for the protocol
+	buildImageBlock := func(img Base64Image) interface{} {
+		if isAnthropic {
+			mediaType, data := parseDataURI(img.Data)
+			return map[string]interface{}{
+				"type": "image",
+				"source": map[string]string{
+					"type":       "base64",
+					"media_type": mediaType,
+					"data":       data,
+				},
+			}
+		}
+		return map[string]interface{}{
+			"type": "image_url",
+			"image_url": map[string]string{"url": img.Data},
+		}
+	}
 
 	if len(base64Images) > 0 {
 		canInterleave := true
@@ -102,10 +124,7 @@ func buildMultimodalWithImages(prompt, systemContent string, base64Images []Base
 			if includeLabels {
 				userContent = append(userContent, map[string]string{"type": "text", "text": "[" + imageItem.Label + "]"})
 			}
-			userContent = append(userContent, map[string]interface{}{
-				"type": "image_url",
-				"image_url": map[string]string{"url": imageItem.Data},
-			})
+			userContent = append(userContent, buildImageBlock(imageItem))
 			cursor = match[1]
 		}
 
@@ -127,10 +146,7 @@ func buildMultimodalWithImages(prompt, systemContent string, base64Images []Base
 		if includeLabels {
 			userContent = append(userContent, map[string]string{"type": "text", "text": "[" + img.Label + "]"})
 		}
-		userContent = append(userContent, map[string]interface{}{
-			"type": "image_url",
-			"image_url": map[string]string{"url": img.Data},
-		})
+		userContent = append(userContent, buildImageBlock(img))
 	}
 	userContent = append(userContent, map[string]string{"type": "text", "text": prompt})
 
@@ -151,45 +167,31 @@ func buildURLPattern(base64Images []Base64Image) string {
 	return strings.Join(urls, "|")
 }
 
-// ChatCompletionsResponse represents Chat Completions API response.
-type ChatCompletionsResponse struct {
-	Choices []ChatChoice `json:"choices"`
-	Usage   ChatUsage    `json:"usage"`
-}
-
-// ChatChoice represents a chat completion choice.
-type ChatChoice struct {
-	Message      ChatMessage `json:"message"`
-	FinishReason string      `json:"finish_reason"`
-}
-
-// ChatMessage represents a chat completion message.
-type ChatMessage struct {
-	Role             string `json:"role"`
-	Content          string `json:"content"`
-	ReasoningContent string `json:"reasoning_content,omitempty"`
-}
-
-// ChatUsage represents usage from Chat Completions response.
-type ChatUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
-// InferProvider determines the provider name from model configuration.
-func InferProvider(modelName, baseURL, provider string) string {
-	if provider != "" {
-		return provider
+// parseDataURI extracts media type and raw base64 data from a data URI.
+// Input: "data:image/jpeg;base64,<base64data>"
+// Returns: "image/jpeg", "<base64data>"
+func parseDataURI(dataURI string) (mediaType, data string) {
+	// Strip "data:" prefix
+	if !strings.HasPrefix(dataURI, "data:") {
+		return "image/jpeg", dataURI
 	}
-	if strings.Contains(baseURL, "deepseek") {
-		return "deepseek"
+	rest := dataURI[5:]
+	// Find the comma separating header from data
+	commaIdx := strings.Index(rest, ",")
+	if commaIdx == -1 {
+		return "image/jpeg", rest
 	}
-	if strings.Contains(baseURL, "openai") {
-		return "openai"
+	header := rest[:commaIdx]
+	data = rest[commaIdx+1:]
+	// Extract media type: "image/jpeg;base64" -> "image/jpeg"
+	semiIdx := strings.Index(header, ";")
+	if semiIdx != -1 {
+		mediaType = header[:semiIdx]
+	} else {
+		mediaType = header
 	}
-	if strings.Contains(baseURL, "openrouter") {
-		return "openrouter"
+	if mediaType == "" {
+		mediaType = "image/jpeg"
 	}
-	return "unknown"
+	return
 }
