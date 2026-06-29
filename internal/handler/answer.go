@@ -25,7 +25,7 @@ var (
 	imgPattern = regexp.MustCompile(`(https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+?\.(?:jpg|jpeg|png|gif|bmp|webp))`)
 )
 
-// AnswerRequest is the JSON request body for /api/answer.
+// AnswerRequest is the JSON request body for /query.
 type AnswerRequest struct {
 	Question string   `json:"question"`
 	Options  []string `json:"options"`
@@ -33,7 +33,7 @@ type AnswerRequest struct {
 	Images   []string `json:"images"`
 }
 
-// AnswerResponse is the JSON response from /api/answer.
+// AnswerResponse is the JSON response from /query.
 type AnswerResponse struct {
 	Success       bool          `json:"success"`
 	Question      string        `json:"question"`

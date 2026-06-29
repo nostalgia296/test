@@ -1,0 +1,23 @@
+[
+  {
+    "name": "OCS AI 答题服务",
+    "homepage": "https://github.com/nostalgia296/ocs-ai",
+    "url": "http://localhost:3000/query",
+    "method": "post",
+    "contentType": "json",
+    "type": "fetch",
+    "data": {
+      "question": "${title}",
+      "type": {
+        "handler": "return (env) => ({ single: 0, multiple: 1, completion: 3, judgement: 4 })[env.type] || 0"
+      },
+      "options": {
+        "handler": "return (env) => (env.options || '').split('\\n').filter(function(o){ return o.trim() })"
+      },
+      "images": {
+        "handler": "return (env) => env.images || []"
+      }
+    },
+    "handler": "return (res)=> res && res.success ? (res.ocs_format || [res.question, res.ocs_answer || res.answer]) : undefined"
+  }
+]

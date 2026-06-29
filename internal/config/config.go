@@ -59,7 +59,7 @@ var DefaultConfig = Config{
 	Timeout:                  1200.0,
 	MaxRetries:               3,
 	Host:                     "0.0.0.0",
-	Port:                     5000,
+	Port:                     3000,
 	Debug:                    false,
 	SecretKeyFile:            ".secret_key",
 	RateLimitAttempts:        5,

@@ -25,7 +25,7 @@ func main() {
 	healthHandler := handler.NewHealthHandler(modelManager, cfg)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/answer", answerHandler.HandleAnswer)
+	mux.HandleFunc("/query", answerHandler.HandleAnswer)
 	mux.HandleFunc("/api/health", healthHandler.ServeHTTP)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
