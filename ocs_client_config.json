@@ -6,6 +6,9 @@
     "method": "post",
     "contentType": "json",
     "type": "fetch",
+    "headers": {
+      "Content-Type": "application/json"
+    },
     "data": {
       "question": "${title}",
       "type": {
@@ -13,11 +16,8 @@
       },
       "options": {
         "handler": "return (env) => (env.options || '').split('\\n').filter(function(o){ return o.trim() })"
-      },
-      "images": {
-        "handler": "return (env) => env.images || []"
       }
     },
-    "handler": "return (res)=> res && res.success ? (res.ocs_format || [res.question, res.ocs_answer || res.answer]) : undefined"
+    "handler": "return (res)=> res && res.success ? [res.question, res.ocs_answer || res.answer] : undefined"
   }
 ]
