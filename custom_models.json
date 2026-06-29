@@ -1,33 +1,51 @@
 {
   "models": {
     "deepseek-chat": {
-      "name": "DeepSeek Chat",
+      "name": "DeepSeek",
       "provider": "deepseek",
-      "api_key": "sk-xxxxxxxxxxxxxxxx",
+      "api_key": "",
       "base_url": "https://api.deepseek.com",
-      "model_name": "deepseek-chat",
+      "model_name": "deepseek-v4-flash",
       "is_multimodal": false,
-      "max_tokens": 500,
+      "max_tokens": 50000,
       "temperature": 0.1,
       "top_p": 0.95,
       "api_protocol": "chat_completions",
-      "ds_thinking_mode": false,
-      "enabled": false,
+      "ds_thinking_mode": true,
+      "enabled": true,
       "is_builtin": false,
       "created_at": "2026-06-29T00:00:00Z",
       "updated_at": "2026-06-29T00:00:00Z"
     }
   },
-  "question_type_models": {
-    "completion":   { "models": [] },
-    "image":        { "models": [] },
-    "judgement":    { "models": [] },
-    "multiple":     { "models": [] },
-    "single":       { "models": [] }
-  },
   "metadata": {
     "builtin_presets_bootstrap_version": "0"
   },
+  "question_type_models": {
+    "completion": {
+      "models": [
+        "deepseek-chat"
+      ]
+    },
+    "image": {
+      "models": []
+    },
+    "judgement": {
+      "models": [
+        "deepseek-chat"
+      ]
+    },
+    "multiple": {
+      "models": [
+        "deepseek-chat"
+      ]
+    },
+    "single": {
+      "models": [
+        "deepseek-chat"
+      ]
+    }
+  },
   "version": "1.0",
-  "updated_at": "2026-06-29T00:00:00Z"
+  "updated_at": "2026-06-29T10:09:25Z"
 }

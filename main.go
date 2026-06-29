@@ -19,7 +19,7 @@ func main() {
 	modelManager := model.NewManager("custom_models.json")
 
 	runtime := modelManager.GetRuntimeSummary()
-	printBanner(cfg, runtime)
+	printBanner(cfg, modelManager, runtime)
 
 	answerHandler := handler.NewService(modelManager, cfg)
 	healthHandler := handler.NewHealthHandler(modelManager, cfg)
@@ -41,7 +41,7 @@ func main() {
 	}
 }
 
-func printBanner(cfg *config.Config, runtime model.RuntimeSummary) {
+func printBanner(cfg *config.Config, mm *model.Manager, runtime model.RuntimeSummary) {
 	readyTypes := ""
 	if len(runtime.ReadyQuestionTypes) > 0 {
 		for _, t := range runtime.ReadyQuestionTypes {
@@ -54,9 +54,17 @@ func printBanner(cfg *config.Config, runtime model.RuntimeSummary) {
 	fmt.Printf("OCS AI 答题服务已启动\n")
 	fmt.Printf("监听地址: %s:%d\n", cfg.Host, cfg.Port)
 	fmt.Printf("可用题型: %s\n", readyTypes)
-	dsThinking := "已启用"
-	if !cfg.DSThinkingMode {
-		dsThinking = "未启用"
+
+	dsThinking := "未启用"
+	if cfg.DSThinkingMode {
+		dsThinking = "已启用 (全局)"
+	} else {
+		for _, m := range mm.GetAllModels(false) {
+			if m.DSThinkingMode && m.Enabled {
+				dsThinking = "已启用 (模型: " + m.Name + ")"
+				break
+			}
+		}
 	}
 	fmt.Printf("DS思考模式: %s\n", dsThinking)
 	fmt.Printf("模型数量: %d (启用 %d)\n", runtime.ModelCount, runtime.EnabledModelCount)
