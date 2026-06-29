@@ -52,16 +52,15 @@ func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigFo
 		multimodalURLs = nil
 	}
 
-	reasoningPayload, legacyReasoning := BuildReasoningPayload(model, forceReasoning)
-	reasoningRequested := reasoningPayload != nil || legacyReasoning != nil
-	useResponsesAPI := ShouldUseResponsesAPI(model)
+	legacyReasoning := BuildReasoningParam(model, forceReasoning)
+	reasoningRequested := legacyReasoning != nil
 
 	messages, _, _ := BuildMultimodalMessages(ctx, prompt, inferredProvider, multimodalURLs, imageItems, true, httpClient)
 
 	maxAttempts := 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		result, err := callModelOnce(ctx, httpClient, model, messages, reasoningPayload, legacyReasoning, useResponsesAPI)
+		result, err := callModelOnce(ctx, httpClient, model, messages, legacyReasoning)
 		if err == nil {
 			result.ReasoningUsed = reasoningRequested
 			return result, nil
@@ -79,43 +78,7 @@ func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigFo
 	return nil, fmt.Errorf("model call failed after %d attempts: %w", maxAttempts, lastErr)
 }
 
-func callModelOnce(ctx context.Context, httpClient *http.Client, model ModelConfigForCall, messages []Message, reasoningPayload map[string]interface{}, legacyReasoning *ReasoningParam, useResponsesAPI bool) (*ModelCallResult, error) {
-	if useResponsesAPI {
-		input, _, _ := BuildResponsesInput(messages)
-		reqBody := map[string]interface{}{
-			"model":            model.ModelName,
-			"input":            input,
-			"max_output_tokens": model.MaxTokens,
-		}
-		if model.Temperature > 0 {
-			reqBody["temperature"] = model.Temperature
-		}
-		if model.TopP > 0 {
-			reqBody["top_p"] = model.TopP
-		}
-		if reasoningPayload != nil {
-			reqBody["reasoning"] = reasoningPayload
-		} else if legacyReasoning != nil {
-			reqBody[legacyReasoning.Name] = legacyReasoning.Value
-		}
-
-		respBody, err := doOpenAIRequest(ctx, httpClient, model.BaseURL, "/v1/responses", model.APIKey, reqBody)
-		if err != nil {
-			return nil, err
-		}
-
-		var responsesResp ResponsesResponse
-		if err := json.Unmarshal(respBody, &responsesResp); err != nil {
-			return nil, err
-		}
-
-		return &ModelCallResult{
-			Reasoning: ExtractReasoningFromResponsesAPI(responsesResp),
-			Answer:    ExtractTextFromResponsesAPI(responsesResp),
-			Usage:     ExtractUsageFromRaw(respBody),
-		}, nil
-	}
-
+func callModelOnce(ctx context.Context, httpClient *http.Client, model ModelConfigForCall, messages []Message, legacyReasoning *ReasoningParam) (*ModelCallResult, error) {
 	// Chat Completions API
 	chatMessages := make([]map[string]interface{}, len(messages))
 	for i, msg := range messages {

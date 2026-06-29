@@ -287,7 +287,7 @@ func (m *Manager) normalizeState() bool {
 			cfg.ReasoningParamValue = "medium"
 		}
 		if cfg.APIProtocol == "" {
-			cfg.APIProtocol = config.ModelAPICompatOpenAI
+			cfg.APIProtocol = config.ModelAPIChat
 		}
 		normalizedModels[id] = cfg
 	}

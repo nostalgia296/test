@@ -157,43 +157,6 @@ func buildURLPattern(base64Images []Base64Image) string {
 	return strings.Join(urls, "|")
 }
 
-// BuildResponsesInput converts messages to Responses API input format.
-// TODO: implement message conversion to Responses API input items
-func BuildResponsesInput(messages []Message) ([]ResponsesInputItem, []Base64Image, bool) {
-	return nil, nil, false
-}
-
-// ResponsesInputItem represents a Responses API input item.
-type ResponsesInputItem struct {
-	Type string
-	Text string
-	Role string
-}
-
-// ResponsesResponse represents Responses API output.
-type ResponsesResponse struct {
-	Output []ResponsesOutputItem `json:"output"`
-}
-
-// ResponsesOutputItem represents Responses API output item.
-type ResponsesOutputItem struct {
-	Type     string                     `json:"type"`
-	Summary  []ResponsesSummaryItem     `json:"summary"`
-	Content  []ResponsesContentItem     `json:"content"`
-}
-
-// ResponsesSummaryItem represents Responses API summary item.
-type ResponsesSummaryItem struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-// ResponsesContentItem represents Responses API content item.
-type ResponsesContentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
 // ChatCompletionsResponse represents Chat Completions API response.
 type ChatCompletionsResponse struct {
 	Choices []ChatChoice `json:"choices"`
@@ -220,43 +183,13 @@ type ChatUsage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-// ExtractAnswerFromResponsesAPI extracts answer text from Responses API response.
-func ExtractAnswerFromResponsesAPI(resp ResponsesResponse) string {
-	var parts []string
-	for _, item := range resp.Output {
-		if item.Type == "output_text" || item.Type == "text" {
-			for _, contentItem := range item.Content {
-				text := strings.TrimSpace(contentItem.Text)
-				if text != "" {
-					parts = append(parts, text)
-				}
-			}
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-// ExtractAnswerFromChatCompletions extracts answer text from Chat Completions response.
-func ExtractAnswerFromChatCompletions(resp ChatCompletionsResponse) string {
-	if len(resp.Choices) == 0 {
-		return ""
-	}
-	return strings.TrimSpace(resp.Choices[0].Message.Content)
-}
-
-// BuildReasoningPayload builds the reasoning parameter payload.
-// TODO: implement reasoning payload based on model configuration
-func BuildReasoningPayload(model ModelConfigForCall, forceReasoning bool) (map[string]interface{}, *ReasoningParam) {
-	return nil, nil
+// BuildReasoningParam builds the reasoning parameter for Chat Completions API.
+// TODO: implement reasoning parameter based on model configuration
+func BuildReasoningParam(model ModelConfigForCall, forceReasoning bool) *ReasoningParam {
+	return nil
 }
 
 // InferProvider determines the provider name from model configuration.
 func InferProvider(modelName, baseURL, provider string) string {
 	return provider
-}
-
-// ShouldUseResponsesAPI determines if the Responses API should be used.
-// TODO: implement logic to select Responses API based on model/api_protocol config
-func ShouldUseResponsesAPI(model ModelConfigForCall) bool {
-	return false
 }

@@ -14,9 +14,7 @@ const (
 	QuestionTypeCompletion  = "completion"
 	QuestionTypeImage       = "image"
 
-	ModelAPICompatOpenAI = "openai_compat"
-	ModelAPIResponses    = "responses"
-	ModelAPIChat         = "chat_completions"
+	ModelAPIChat = "chat_completions"
 )
 
 type Config struct {
