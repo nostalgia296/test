@@ -110,11 +110,5 @@ func InferProvider(modelName, baseURL, provider string) string {
 	if strings.Contains(baseURL, "anthropic") {
 		return "anthropic"
 	}
-	if strings.Contains(baseURL, "openai") {
-		return "openai"
-	}
-	if strings.Contains(baseURL, "openrouter") {
-		return "openrouter"
-	}
-	return "unknown"
+	return "openai_compatible"
 }
