@@ -48,8 +48,8 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp := HealthResponse{
 		Status:             status,
-		Service:            "OCS AI Answerer",
-		Version:            "3.1.0",
+		Service:            "ocs-ai-server",
+		Version:            "1.0",
 		APIConfigured:      runtime.CanAnswerAny,
 		ModelCount:         runtime.ModelCount,
 		EnabledModelCount:  runtime.EnabledModelCount,
