@@ -12,28 +12,25 @@ const (
 )
 
 type ModelConfig struct {
-	Name                string  `json:"name"`
-	Provider            string  `json:"provider"`
-	APIKey              string  `json:"api_key"`
-	BaseURL             string  `json:"base_url"`
-	ModelName           string  `json:"model_name"`
-	IsMultimodal        bool    `json:"is_multimodal"`
-	MaxTokens           int     `json:"max_tokens"`
-	Temperature         float64 `json:"temperature"`
-	TopP                float64 `json:"top_p"`
-	SupportsReasoning   bool    `json:"supports_reasoning"`
-	ReasoningParamName  string  `json:"reasoning_param_name"`
-	ReasoningParamValue string  `json:"reasoning_param_value"`
-	APIProtocol         string  `json:"api_protocol"`
-	Enabled             bool    `json:"enabled"`
-	IsBuiltin           bool    `json:"is_builtin"`
-	CreatedAt           string  `json:"created_at"`
-	UpdatedAt           string  `json:"updated_at"`
+	Name           string  `json:"name"`
+	Provider       string  `json:"provider"`
+	APIKey         string  `json:"api_key"`
+	BaseURL        string  `json:"base_url"`
+	ModelName      string  `json:"model_name"`
+	IsMultimodal   bool    `json:"is_multimodal"`
+	MaxTokens      int     `json:"max_tokens"`
+	Temperature    float64 `json:"temperature"`
+	TopP           float64 `json:"top_p"`
+	APIProtocol    string  `json:"api_protocol"`
+	DSThinkingMode bool    `json:"ds_thinking_mode"`
+	Enabled        bool    `json:"enabled"`
+	IsBuiltin      bool    `json:"is_builtin"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 type QuestionTypeConfig struct {
-	Models         []string `json:"models"`
-	EnableReasoning bool    `json:"enable_reasoning"`
+	Models []string `json:"models"`
 }
 
 type ModelData struct {
@@ -45,11 +42,11 @@ type ModelData struct {
 }
 
 var DefaultQuestionTypeModels = map[string]QuestionTypeConfig{
-	config.QuestionTypeSingle:     {Models: []string{}, EnableReasoning: false},
-	config.QuestionTypeMultiple:   {Models: []string{}, EnableReasoning: true},
-	config.QuestionTypeJudgement:  {Models: []string{}, EnableReasoning: false},
-	config.QuestionTypeCompletion: {Models: []string{}, EnableReasoning: false},
-	config.QuestionTypeImage:      {Models: []string{}, EnableReasoning: false},
+	config.QuestionTypeSingle:     {Models: []string{}},
+	config.QuestionTypeMultiple:   {Models: []string{}},
+	config.QuestionTypeJudgement:  {Models: []string{}},
+	config.QuestionTypeCompletion: {Models: []string{}},
+	config.QuestionTypeImage:      {Models: []string{}},
 }
 
 func NewModelData() ModelData {
@@ -68,8 +65,7 @@ func copyQuestionTypeConfigs(src map[string]QuestionTypeConfig) map[string]Quest
 		models := make([]string, len(v.Models))
 		copy(models, v.Models)
 		dst[k] = QuestionTypeConfig{
-			Models:         models,
-			EnableReasoning: v.EnableReasoning,
+			Models: models,
 		}
 	}
 	return dst

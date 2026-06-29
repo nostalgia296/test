@@ -13,28 +13,25 @@ import (
 
 // ModelCallResult holds the result of calling an LLM model.
 type ModelCallResult struct {
-	Reasoning     string
-	Answer        string
-	Usage         *UsageInfo
-	ReasoningUsed bool
+	Answer    string
+	Reasoning string
+	Usage     *UsageInfo
 }
 
 // ModelConfigForCall is the model configuration needed for making LLM calls.
 type ModelConfigForCall struct {
-	ID                string
-	Name              string
-	Provider          string
-	APIKey            string
-	BaseURL           string
-	ModelName         string
-	IsMultimodal      bool
-	MaxTokens         int
-	Temperature       float64
-	TopP              float64
-	SupportsReasoning bool
-	ReasoningParamName  string
-	ReasoningParamValue string
-	APIProtocol       string
+	ID             string
+	Name           string
+	Provider       string
+	APIKey         string
+	BaseURL        string
+	ModelName      string
+	IsMultimodal   bool
+	MaxTokens      int
+	Temperature    float64
+	TopP           float64
+	APIProtocol    string
+	DSThinkingMode bool
 }
 
 // UsageInfo holds token usage information.
@@ -45,24 +42,20 @@ type UsageInfo struct {
 }
 
 // CallModel calls the LLM with the given parameters.
-func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigForCall, prompt string, imageURLs []string, imageItems []map[string]string, forceReasoning bool) (*ModelCallResult, error) {
+func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigForCall, prompt string, imageURLs []string, imageItems []map[string]string) (*ModelCallResult, error) {
 	inferredProvider := InferProvider(model.ModelName, model.BaseURL, model.Provider)
 	multimodalURLs := imageURLs
 	if !model.IsMultimodal {
 		multimodalURLs = nil
 	}
 
-	legacyReasoning := BuildReasoningParam(model, forceReasoning)
-	reasoningRequested := legacyReasoning != nil
-
 	messages, _, _ := BuildMultimodalMessages(ctx, prompt, inferredProvider, multimodalURLs, imageItems, true, httpClient)
 
 	maxAttempts := 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		result, err := callModelOnce(ctx, httpClient, model, messages, legacyReasoning)
+		result, err := callModelOnce(ctx, httpClient, model, messages)
 		if err == nil {
-			result.ReasoningUsed = reasoningRequested
 			return result, nil
 		}
 		lastErr = err
@@ -78,7 +71,7 @@ func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigFo
 	return nil, fmt.Errorf("model call failed after %d attempts: %w", maxAttempts, lastErr)
 }
 
-func callModelOnce(ctx context.Context, httpClient *http.Client, model ModelConfigForCall, messages []Message, legacyReasoning *ReasoningParam) (*ModelCallResult, error) {
+func callModelOnce(ctx context.Context, httpClient *http.Client, model ModelConfigForCall, messages []Message) (*ModelCallResult, error) {
 	// Chat Completions API
 	chatMessages := make([]map[string]interface{}, len(messages))
 	for i, msg := range messages {
@@ -89,15 +82,18 @@ func callModelOnce(ctx context.Context, httpClient *http.Client, model ModelConf
 	}
 
 	reqBody := map[string]interface{}{
-		"model":         model.ModelName,
-		"messages":      chatMessages,
-		"temperature":   model.Temperature,
-		"max_tokens":    model.MaxTokens,
-		"top_p":         model.TopP,
-		"stream":        false,
+		"model":      model.ModelName,
+		"messages":   chatMessages,
+		"max_tokens": model.MaxTokens,
+		"stream":     false,
 	}
-	if legacyReasoning != nil {
-		reqBody[legacyReasoning.Name] = legacyReasoning.Value
+
+	// DeepSeek thinking mode: enable thinking, remove temperature/top_p
+	if model.DSThinkingMode {
+		reqBody["thinking"] = map[string]string{"type": "enabled"}
+	} else {
+		reqBody["temperature"] = model.Temperature
+		reqBody["top_p"] = model.TopP
 	}
 
 	respBody, err := doOpenAIRequest(ctx, httpClient, model.BaseURL, "/v1/chat/completions", model.APIKey, reqBody)
@@ -111,8 +107,8 @@ func callModelOnce(ctx context.Context, httpClient *http.Client, model ModelConf
 	}
 
 	return &ModelCallResult{
-		Reasoning: ExtractReasoningFromChatCompletions(chatResp),
 		Answer:    ExtractTextFromChatCompletions(chatResp),
+		Reasoning: ExtractReasoningFromChatCompletions(chatResp),
 		Usage:     extractUsageFromChatCompletions(chatResp),
 	}, nil
 }

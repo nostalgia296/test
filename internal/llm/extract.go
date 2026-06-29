@@ -4,19 +4,13 @@ import (
 	"strings"
 )
 
-// ExtractReasoningFromChatCompletions extracts reasoning from Chat Completions response.
+// ExtractReasoningFromChatCompletions extracts reasoning_content from Chat Completions response.
+// Used by DeepSeek thinking mode and other providers that return chain-of-thought.
 func ExtractReasoningFromChatCompletions(resp ChatCompletionsResponse) string {
 	if len(resp.Choices) == 0 {
 		return ""
 	}
-
-	message := resp.Choices[0].Message
-	reasoningContent := strings.TrimSpace(message.ReasoningContent)
-	if reasoningContent != "" {
-		return reasoningContent
-	}
-
-	return ""
+	return strings.TrimSpace(resp.Choices[0].Message.ReasoningContent)
 }
 
 // ExtractTextFromChatCompletions extracts text from Chat Completions response.

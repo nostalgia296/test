@@ -13,7 +13,6 @@ type HealthResponse struct {
 	Status             string   `json:"status"`
 	Service            string   `json:"service"`
 	Version            string   `json:"version"`
-	ReasoningEnabled   bool     `json:"reasoning_enabled"`
 	APIConfigured      bool     `json:"api_configured"`
 	ModelCount         int      `json:"model_count"`
 	EnabledModelCount  int      `json:"enabled_model_count"`
@@ -49,9 +48,8 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp := HealthResponse{
 		Status:             status,
-		Service:            "OCS AI Answerer (Multi-Model)",
+		Service:            "OCS AI Answerer",
 		Version:            "3.1.0",
-		ReasoningEnabled:   h.cfg.EnableReasoning,
 		APIConfigured:      runtime.CanAnswerAny,
 		ModelCount:         runtime.ModelCount,
 		EnabledModelCount:  runtime.EnabledModelCount,

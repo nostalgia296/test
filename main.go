@@ -54,13 +54,12 @@ func printBanner(cfg *config.Config, runtime model.RuntimeSummary) {
 	fmt.Printf("OCS AI 答题服务已启动\n")
 	fmt.Printf("监听地址: %s:%d\n", cfg.Host, cfg.Port)
 	fmt.Printf("可用题型: %s\n", readyTypes)
-	fmt.Printf("深度思考: %s\n", boolStr(cfg.EnableReasoning))
+	dsThinking := "已启用"
+	if !cfg.DSThinkingMode {
+		dsThinking = "未启用"
+	}
+	fmt.Printf("DS思考模式: %s\n", dsThinking)
 	fmt.Printf("模型数量: %d (启用 %d)\n", runtime.ModelCount, runtime.EnabledModelCount)
 }
 
-func boolStr(b bool) string {
-	if b {
-		return "已启用"
-	}
-	return "未启用"
-}
+

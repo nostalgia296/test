@@ -35,19 +35,19 @@ type AnswerRequest struct {
 
 // AnswerResponse is the JSON response from /api/answer.
 type AnswerResponse struct {
-	Success       bool                   `json:"success"`
-	Question      string                 `json:"question"`
-	Answer        string                 `json:"answer"`
-	OCSAnswer     string                 `json:"ocs_answer"`
-	Type          string                 `json:"type"`
-	RawAnswer     string                 `json:"raw_answer"`
-	Model         string                 `json:"model"`
-	Provider      string                 `json:"provider"`
-	ReasoningUsed bool                   `json:"reasoning_used"`
-	AITime        float64                `json:"ai_time"`
-	TotalTime     float64                `json:"total_time"`
-	Usage         *UsageInfo             `json:"usage"`
-	OCSFormat     []interface{}          `json:"ocs_format"`
+	Success       bool          `json:"success"`
+	Question      string        `json:"question"`
+	Answer        string        `json:"answer"`
+	OCSAnswer     string        `json:"ocs_answer"`
+	Type          string        `json:"type"`
+	RawAnswer     string        `json:"raw_answer"`
+	Model         string        `json:"model"`
+	Provider      string        `json:"provider"`
+	ReasoningUsed bool          `json:"reasoning_used"`
+	AITime        float64       `json:"ai_time"`
+	TotalTime     float64       `json:"total_time"`
+	Usage         *UsageInfo    `json:"usage"`
+	OCSFormat     []interface{} `json:"ocs_format"`
 }
 
 // UsageInfo holds token usage data.
@@ -120,9 +120,6 @@ func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
 	// Build prompt
 	promptText := prompt.Build(question, options, qType, useOptionLabels)
 
-	// Determine reasoning mode
-	forceReasoning := determineReasoning(s.cfg, qType, len(imageURLs) > 0)
-
 	// Check available models
 	typeModels := s.modelManager.GetAvailableModels(qType, len(imageURLs) > 0)
 	if len(typeModels) == 0 {
@@ -137,7 +134,7 @@ func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
 
 	// Call models with failover
 	startTime := time.Now()
-	var reasoning, rawAnswer string
+	var rawAnswer, reasoning string
 	var usage *llm.UsageInfo
 	var actualModelID, modelName, actualProvider string
 	var reasoningUsed bool
@@ -149,23 +146,21 @@ func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
 		}
 
 		llmModel := llm.ModelConfigForCall{
-			ID:                tryModelID,
-			Name:              m.Name,
-			Provider:          m.Provider,
-			APIKey:            m.APIKey,
-			BaseURL:           m.BaseURL,
-			ModelName:         m.ModelName,
-			IsMultimodal:      m.IsMultimodal,
-			MaxTokens:         m.MaxTokens,
-			Temperature:       m.Temperature,
-			TopP:              m.TopP,
-			SupportsReasoning: m.SupportsReasoning,
-			ReasoningParamName:  m.ReasoningParamName,
-			ReasoningParamValue: m.ReasoningParamValue,
-			APIProtocol:       m.APIProtocol,
+			ID:             tryModelID,
+			Name:           m.Name,
+			Provider:       m.Provider,
+			APIKey:         m.APIKey,
+			BaseURL:        m.BaseURL,
+			ModelName:      m.ModelName,
+			IsMultimodal:   m.IsMultimodal,
+			MaxTokens:      m.MaxTokens,
+			Temperature:    m.Temperature,
+			TopP:           m.TopP,
+			APIProtocol:    m.APIProtocol,
+			DSThinkingMode: m.DSThinkingMode || s.cfg.DSThinkingMode,
 		}
 
-		result, err := llm.CallModel(r.Context(), s.httpClient, llmModel, promptText, imageURLs, imageItems, forceReasoning)
+		result, err := llm.CallModel(r.Context(), s.httpClient, llmModel, promptText, imageURLs, imageItems)
 		if err != nil {
 			continue
 		}
@@ -173,10 +168,10 @@ func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
 		actualModelID = tryModelID
 		modelName = m.Name
 		actualProvider = llm.InferProvider(m.ModelName, m.BaseURL, m.Provider)
-		reasoning = result.Reasoning
 		rawAnswer = result.Answer
+		reasoning = result.Reasoning
 		usage = result.Usage
-		reasoningUsed = result.ReasoningUsed
+		reasoningUsed = result.Reasoning != ""
 		break
 	}
 
@@ -225,7 +220,7 @@ func (s *Service) HandleAnswer(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Build OCS tags
-	tags := buildTags(reasoningUsed, forceReasoning, actualModelID, modelName, s.modelManager)
+	tags := buildTags(reasoningUsed, actualModelID, modelName, s.modelManager)
 
 	ocsFormat := []interface{}{
 		question,
@@ -384,42 +379,24 @@ func filterIconImages(items []map[string]string) []map[string]string {
 	return result
 }
 
-func determineReasoning(cfg *config.Config, qType string, hasImages bool) bool {
-	if qType == config.QuestionTypeMultiple && cfg.AutoReasoningForMultiple {
-		return true
-	}
-	if hasImages && cfg.AutoReasoningForImages {
-		return true
-	}
-	return cfg.EnableReasoning
-}
-
-func buildTags(reasoningUsed, forceReasoning bool, modelID string, modelName string, mm *model.Manager) []map[string]string {
+func buildTags(reasoningUsed bool, modelID string, modelName string, mm *model.Manager) []map[string]string {
 	tags := []map[string]string{}
 
 	if reasoningUsed {
 		tags = append(tags, map[string]string{
-			"text":   "深度思考",
-			"title":  "使用深度思考模式生成，答案更准确",
-			"color":  "purple",
+			"text":  "深度思考",
+			"title": "使用 DeepSeek 思考模式生成，答案更准确",
+			"color": "purple",
 		})
-		if forceReasoning {
-			tags = append(tags, map[string]string{
-				"text":   "自动思考",
-				"title":  "多选题自动启用深度思考",
-				"color":  "orange",
-			})
-		}
 	}
 
 	if modelID != "" {
 		m := mm.GetModel(modelID)
 		if m != nil {
-			tagText := "自定义模型"
 			tags = append(tags, map[string]string{
-				"text":   tagText,
-				"title":  "使用模型: " + modelName,
-				"color":  "green",
+				"text":  "自定义模型",
+				"title": "使用模型: " + modelName,
+				"color": "green",
 			})
 		}
 	}

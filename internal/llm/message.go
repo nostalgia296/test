@@ -23,12 +23,6 @@ type Message struct {
 	Content interface{}
 }
 
-// ReasoningParam describes a reasoning parameter for providers.
-type ReasoningParam struct {
-	Name  string
-	Value string
-}
-
 // BuildMultimodalMessages builds multimodal message list and returns base64 images.
 func BuildMultimodalMessages(ctx context.Context, prompt, providerName string, imageURLs []string, imageItems []map[string]string, includeLabels bool, httpClient *http.Client) ([]Message, []Base64Image, bool) {
 	imageURLs = imageURLs[:]
@@ -173,7 +167,7 @@ type ChatChoice struct {
 type ChatMessage struct {
 	Role             string `json:"role"`
 	Content          string `json:"content"`
-	ReasoningContent string `json:"reasoning_content"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 // ChatUsage represents usage from Chat Completions response.
@@ -183,13 +177,19 @@ type ChatUsage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-// BuildReasoningParam builds the reasoning parameter for Chat Completions API.
-// TODO: implement reasoning parameter based on model configuration
-func BuildReasoningParam(model ModelConfigForCall, forceReasoning bool) *ReasoningParam {
-	return nil
-}
-
 // InferProvider determines the provider name from model configuration.
 func InferProvider(modelName, baseURL, provider string) string {
-	return provider
+	if provider != "" {
+		return provider
+	}
+	if strings.Contains(baseURL, "deepseek") {
+		return "deepseek"
+	}
+	if strings.Contains(baseURL, "openai") {
+		return "openai"
+	}
+	if strings.Contains(baseURL, "openrouter") {
+		return "openrouter"
+	}
+	return "unknown"
 }

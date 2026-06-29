@@ -21,17 +21,13 @@ type Config struct {
 	// Model provider
 	ModelProvider string
 
-	// Reasoning config
-	EnableReasoning           bool
-	ReasoningEffort           string
-	AutoReasoningForMultiple  bool
-	AutoReasoningForImages    bool
-
 	// AI parameters
-	Temperature         float64
-	MaxTokens           int
-	ReasoningMaxTokens  int
-	TopP                float64
+	Temperature float64
+	MaxTokens   int
+	TopP        float64
+
+	// DeepSeek thinking mode
+	DSThinkingMode bool
 
 	// Network config
 	HTTPProxy   string
@@ -55,15 +51,11 @@ type Config struct {
 }
 
 var DefaultConfig = Config{
-	ModelProvider:           "auto",
-	EnableReasoning:         false,
-	ReasoningEffort:         "medium",
-	AutoReasoningForMultiple: true,
-	AutoReasoningForImages:   true,
-	Temperature:              0.1,
-	MaxTokens:                500,
-	ReasoningMaxTokens:       4096,
-	TopP:                     0.95,
+	ModelProvider:  "auto",
+	Temperature:    0.1,
+	MaxTokens:      500,
+	TopP:           0.95,
+	DSThinkingMode: false,
 	Timeout:                  1200.0,
 	MaxRetries:               3,
 	Host:                     "0.0.0.0",
@@ -112,15 +104,10 @@ func Load(envPaths ...string) (*Config, error) {
 
 	cfg.ModelProvider = getEnv("MODEL_PROVIDER", cfg.ModelProvider)
 
-	cfg.EnableReasoning = getEnvBool("ENABLE_REASONING", cfg.EnableReasoning)
-	cfg.ReasoningEffort = getEnv("REASONING_EFFORT", cfg.ReasoningEffort)
-	cfg.AutoReasoningForMultiple = getEnvBool("AUTO_REASONING_FOR_MULTIPLE", cfg.AutoReasoningForMultiple)
-	cfg.AutoReasoningForImages = getEnvBool("AUTO_REASONING_FOR_IMAGES", cfg.AutoReasoningForImages)
-
 	cfg.Temperature = getEnvFloat("TEMPERATURE", cfg.Temperature)
 	cfg.MaxTokens = clampInt(getEnvInt("MAX_TOKENS", cfg.MaxTokens), 1, 8192)
-	cfg.ReasoningMaxTokens = clampInt(getEnvInt("REASONING_MAX_TOKENS", cfg.ReasoningMaxTokens), 1, 65536)
 	cfg.TopP = getEnvFloat("TOP_P", cfg.TopP)
+	cfg.DSThinkingMode = getEnvBool("DS_THINKING_MODE", cfg.DSThinkingMode)
 
 	cfg.HTTPProxy = getEnv("HTTP_PROXY", "")
 	cfg.HTTPSProxy = getEnv("HTTPS_PROXY", "")
@@ -236,12 +223,10 @@ func ValidateConfigUpdates(data map[string]interface{}) error {
 		"TEMPERATURE": true, "TOP_P": true, "TIMEOUT": true,
 	}
 	intKeys := map[string]bool{
-		"MAX_TOKENS": true, "REASONING_MAX_TOKENS": true,
-		"MAX_RETRIES": true, "PORT": true,
+		"MAX_TOKENS": true, "MAX_RETRIES": true, "PORT": true,
 	}
 	boolKeys := map[string]bool{
-		"ENABLE_REASONING": true, "AUTO_REASONING_FOR_MULTIPLE": true,
-		"AUTO_REASONING_FOR_IMAGES": true, "DEBUG": true,
+		"DEBUG": true,
 	}
 
 	for key, val := range data {

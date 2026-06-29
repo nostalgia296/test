@@ -136,14 +136,11 @@ func (m *Manager) DeleteModel(id string) error {
 	return m.Save()
 }
 
-func (m *Manager) SetQuestionTypeModels(questionType string, modelIDs []string, enableReasoning *bool) error {
+func (m *Manager) SetQuestionTypeModels(questionType string, modelIDs []string) error {
 	modelsCopy := make([]string, len(modelIDs))
 	copy(modelsCopy, modelIDs)
 	cfg := m.QuestionTypeModels[questionType]
 	cfg.Models = modelsCopy
-	if enableReasoning != nil {
-		cfg.EnableReasoning = *enableReasoning
-	}
 	m.QuestionTypeModels[questionType] = cfg
 	return m.Save()
 }
@@ -155,13 +152,6 @@ func (m *Manager) GetQuestionTypeModels(questionType string) []string {
 		return result
 	}
 	return nil
-}
-
-func (m *Manager) GetQuestionTypeReasoning(questionType string) bool {
-	if cfg, ok := m.QuestionTypeModels[questionType]; ok {
-		return cfg.EnableReasoning
-	}
-	return false
 }
 
 func (m *Manager) GetAvailableModels(questionType string, hasImages bool) []string {
@@ -280,12 +270,6 @@ func (m *Manager) normalizeState() bool {
 		if cfg.TopP == 0 {
 			cfg.TopP = 0.95
 		}
-		if cfg.SupportsReasoning && cfg.ReasoningParamName == "" {
-			cfg.ReasoningParamName = "reasoning_effort"
-		}
-		if cfg.SupportsReasoning && cfg.ReasoningParamValue == "" {
-			cfg.ReasoningParamValue = "medium"
-		}
 		if cfg.APIProtocol == "" {
 			cfg.APIProtocol = config.ModelAPIChat
 		}
@@ -316,12 +300,11 @@ func normalizeQuestionTypeMappings(src map[string]QuestionTypeConfig) map[string
 		if !ok {
 			continue
 		}
-		if len(cfg.Models) > 0 || cfg.EnableReasoning {
+		if len(cfg.Models) > 0 {
 			models := make([]string, len(cfg.Models))
 			copy(models, cfg.Models)
 			result[qt] = QuestionTypeConfig{
-				Models:         models,
-				EnableReasoning: cfg.EnableReasoning,
+				Models: models,
 			}
 		}
 	}
