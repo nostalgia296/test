@@ -1,1 +1,1 @@
-目前只支持 Chat Completions API 端点
+ Chat Completions API 和 Anthropic Message API支持
