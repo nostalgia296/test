@@ -51,7 +51,6 @@ func RegisterProvider(protocol string, fn ProviderFunc) {
 
 // CallModel calls the LLM with the given parameters, routing to the correct API provider.
 func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigForCall, prompt string, imageURLs []string, imageItems []map[string]string) (*ModelCallResult, error) {
-	inferredProvider := InferProvider(model.ModelName, model.BaseURL, model.Provider)
 	multimodalURLs := imageURLs
 	if !model.IsMultimodal {
 		multimodalURLs = nil
@@ -62,7 +61,7 @@ func CallModel(ctx context.Context, httpClient *http.Client, model ModelConfigFo
 		protocol = "chat_completions"
 	}
 
-	messages, _, _ := BuildMultimodalMessages(ctx, prompt, inferredProvider, protocol, multimodalURLs, imageItems, true, httpClient)
+	messages, _, _ := BuildMultimodalMessages(ctx, prompt, protocol, multimodalURLs, imageItems, true, httpClient)
 
 	providerFn, ok := providers[protocol]
 	if !ok {

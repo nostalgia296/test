@@ -26,7 +26,7 @@ type Message struct {
 // BuildMultimodalMessages builds multimodal message list and returns base64 images.
 // apiProtocol controls the content block format: "anthropic" uses Anthropic-style image blocks,
 // all others use Chat Completions (OpenAI-compatible) style.
-func BuildMultimodalMessages(ctx context.Context, prompt, providerName string, apiProtocol string, imageURLs []string, imageItems []map[string]string, includeLabels bool, httpClient *http.Client) ([]Message, []Base64Image, bool) {
+func BuildMultimodalMessages(ctx context.Context, prompt string, apiProtocol string, imageURLs []string, imageItems []map[string]string, includeLabels bool, httpClient *http.Client) ([]Message, []Base64Image, bool) {
 	imageURLs = imageURLs[:]
 	imageItems = imageItems[:]
 	useImages := len(imageURLs) > 0
